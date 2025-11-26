@@ -1,13 +1,10 @@
-using DocumentProcessor.Infrastructure;
-using DocumentProcessor.Infrastructure.Data;
 using DocumentProcessor.Web.Components;
-using DocumentProcessor.Application;
-using DocumentProcessor.Core.Entities;
+using DocumentProcessor.Web.Data;
+using DocumentProcessor.Web.Services;
+using DocumentProcessor.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
-using System.IO;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,14 +23,42 @@ builder.Services.AddServerSideBlazor()
         }
     });
 
-// Add infrastructure services (Database, Repositories, Document Sources)
-builder.Services.AddInfrastructureServices(builder.Configuration);
+// Configure database connection
+string connectionString;
+try
+{
+    var secretsService = new SecretsService();
+    var secretJson = await secretsService.GetSecretByDescriptionPrefixAsync("Password for RDS MSSQL used for MAM319.");
+    var username = secretsService.GetFieldFromSecret(secretJson, "username");
+    var password = secretsService.GetFieldFromSecret(secretJson, "password");
+    var host = secretsService.GetFieldFromSecret(secretJson, "host");
+    var port = secretsService.GetFieldFromSecret(secretJson, "port");
+    var dbname = secretsService.GetFieldFromSecret(secretJson, "dbname");
 
-// Add application services (Document processing, Background services)
-builder.Services.AddApplicationServices();
+    connectionString = $"Server={host},{port};Database={dbname};User Id={username};Password={password};TrustServerCertificate=true;Encrypt=true";
+    builder.Services.AddSingleton(secretsService);
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Warning: Could not load connection string from AWS Secrets Manager: {ex.Message}");
+    Console.WriteLine("Falling back to appsettings.json connection string");
+    connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Server=localhost;Database=DocumentProcessor;Integrated Security=true;TrustServerCertificate=True;";
+}
+
+// Register database context
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
+// Register services
+builder.Services.AddScoped<DocumentRepository>();
+builder.Services.AddScoped<FileStorageService>();
+builder.Services.AddScoped<AIService>();
+builder.Services.AddSingleton<DocumentProcessingService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DocumentProcessingService>());
 
 // Add health checks
-builder.Services.AddInfrastructureHealthChecks(builder.Configuration);
+builder.Services.AddHealthChecks();
 
 // Add additional logging with detailed error information
 builder.Services.AddLogging(logging =>
@@ -72,20 +97,23 @@ builder.Services.AddResponseCompression(options =>
 var app = builder.Build();
 
 // Ensure database is created
-await app.Services.EnsureDatabaseAsync();
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await context.Database.EnsureCreatedAsync();
+}
 
 // Re-queue stuck documents from previous runs
 using (var scope = app.Services.CreateScope())
 {
-    var documentRepository = scope.ServiceProvider.GetRequiredService<DocumentProcessor.Core.Interfaces.IDocumentRepository>();
-    var processingService = scope.ServiceProvider.GetRequiredService<DocumentProcessor.Application.Services.IDocumentProcessingService>();
+    var documentRepository = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
+    var processingService = scope.ServiceProvider.GetRequiredService<DocumentProcessingService>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     logger.LogInformation("Checking for stuck documents...");
 
-    // Get all pending and queued documents
-    var pendingDocs = await documentRepository.GetByStatusAsync(DocumentProcessor.Core.Entities.DocumentStatus.Pending);
-    var queuedDocs = await documentRepository.GetByStatusAsync(DocumentProcessor.Core.Entities.DocumentStatus.Queued);
+    var pendingDocs = await documentRepository.GetByStatusAsync(DocumentStatus.Pending);
+    var queuedDocs = await documentRepository.GetByStatusAsync(DocumentStatus.Queued);
     var stuckDocuments = pendingDocs.Concat(queuedDocs).ToList();
 
     if (stuckDocuments.Any())
@@ -194,11 +222,21 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 app.MapGet("/admin/cleanup-stuck-documents", async (IServiceProvider services) =>
 {
     using var scope = services.CreateScope();
-    var backgroundService = scope.ServiceProvider.GetRequiredService<DocumentProcessor.Application.Services.IBackgroundDocumentProcessingService>();
-    
-    await backgroundService.CleanupStuckDocumentsAsync(30); // 30 minutes timeout
-    
-    return Results.Ok(new { message = "Stuck documents cleanup initiated" });
+    var documentRepository = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
+    var processingService = scope.ServiceProvider.GetRequiredService<DocumentProcessingService>();
+
+    var stuckDocs = await documentRepository.GetByStatusAsync(DocumentStatus.Processing);
+    var timeoutMinutes = 30;
+    var cutoffTime = DateTime.UtcNow.AddMinutes(-timeoutMinutes);
+
+    var timedOutDocs = stuckDocs.Where(d => d.ProcessingStartedAt.HasValue && d.ProcessingStartedAt.Value < cutoffTime);
+
+    foreach (var doc in timedOutDocs)
+    {
+        await processingService.QueueDocumentForProcessingAsync(doc.Id);
+    }
+
+    return Results.Ok(new { message = "Stuck documents cleanup initiated", count = timedOutDocs.Count() });
 });
 
 app.Run();

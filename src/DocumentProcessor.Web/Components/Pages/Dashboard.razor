@@ -1,9 +1,9 @@
 @page "/"
 @page "/dashboard"
-@using DocumentProcessor.Core.Interfaces
-@using DocumentProcessor.Core.Entities
+@using DocumentProcessor.Web.Models
+@using DocumentProcessor.Web.Data
 @using Microsoft.EntityFrameworkCore
-@inject IDocumentRepository DocumentRepository
+@inject DocumentRepository DocumentRepository
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
 

@@ -1,13 +1,13 @@
 @page "/upload"
-@using DocumentProcessor.Core.Interfaces
-@using DocumentProcessor.Core.Entities
-@using DocumentProcessor.Application.Services
+@using DocumentProcessor.Web.Models
+@using DocumentProcessor.Web.Data
+@using DocumentProcessor.Web.Services
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.Extensions.DependencyInjection
-@inject IDocumentSourceProvider DocumentSource
-@inject IDocumentRepository DocumentRepository
+@inject FileStorageService DocumentSource
+@inject DocumentRepository DocumentRepository
 @inject IServiceScopeFactory ServiceScopeFactory
-@inject DocumentProcessor.Application.Services.IDocumentProcessingService DocumentProcessingService
+@inject DocumentProcessingService DocumentProcessingService
 @inject ILogger<DocumentUpload> Logger
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
@@ -217,9 +217,8 @@
     {
         try
         {
-            // Use a separate scope to avoid entity tracking conflicts
             using var scope = ServiceScopeFactory.CreateScope();
-            var documentRepo = scope.ServiceProvider.GetRequiredService<IDocumentRepository>();
+            var documentRepo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
             var documents = await documentRepo.GetAllAsync();
             _recentDocuments = documents
                 .OrderByDescending(d => d.CreatedAt)
@@ -297,14 +296,14 @@
                 {
                     Id = Guid.NewGuid(),
                     FileName = file.Name,
-                    OriginalFileName = file.Name,  // Set original filename
-                    FileExtension = Path.GetExtension(file.Name).ToLowerInvariant(),  // Set file extension
+                    OriginalFileName = file.Name,
+                    FileExtension = Path.GetExtension(file.Name).ToLowerInvariant(),
                     ContentType = file.ContentType,
                     FileSize = file.Size,
                     Status = DocumentStatus.Pending,
-                    Source = DocumentProcessor.Core.Entities.DocumentSource.LocalUpload,  // Set source (use fully qualified name)
-                    UploadedAt = DateTime.UtcNow,  // Set UploadedAt
-                    UploadedBy = userId,  // Set the authenticated user ID
+                    Source = DocumentProcessor.Web.Models.DocumentSource.LocalUpload,
+                    UploadedAt = DateTime.UtcNow,
+                    UploadedBy = userId,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -324,14 +323,14 @@
                 try
                 {
                     using var scope = ServiceScopeFactory.CreateScope();
-                    var documentRepo = scope.ServiceProvider.GetRequiredService<IDocumentRepository>();
+                    var documentRepo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
                     savedDocument = await documentRepo.AddAsync(document);
                     Logger.LogInformation("Document saved successfully: {DocumentId}", savedDocument.Id);
                 }
                 catch (Exception saveEx)
                 {
                     Logger.LogError(saveEx, "Failed to save document to database: {DocumentId}", document.Id);
-                    throw; // Re-throw to be caught by the outer try-catch
+                    throw;
                 }
                 
                 progress.Progress = 75;
