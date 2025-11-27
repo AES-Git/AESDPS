@@ -2,132 +2,57 @@
 @page "/dashboard"
 @using DocumentProcessor.Web.Models
 @using DocumentProcessor.Web.Data
-@using Microsoft.EntityFrameworkCore
 @inject DocumentRepository DocumentRepository
-@inject NavigationManager Navigation
 @rendermode InteractiveServer
 
-<PageTitle>Dashboard - Document Processor</PageTitle>
+<PageTitle>Dashboard</PageTitle>
 
 <div class="container mt-4">
-    <h1>
-        <i class="bi bi-speedometer2 me-2"></i>Dashboard
-    </h1>
-
+    <h1><i class="bi bi-speedometer2 me-2"></i>Dashboard</h1>
     <div class="row mt-4">
         <div class="col-md-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Recent Documents</h5>
-                    <a href="/upload" class="btn btn-primary btn-sm">
-                        <i class="bi bi-cloud-upload me-2"></i>Upload New
-                    </a>
+                    <a href="/upload" class="btn btn-primary btn-sm"><i class="bi bi-cloud-upload me-2"></i>Upload New</a>
                 </div>
                 <div class="card-body">
                     @if (isLoading)
                     {
-                        <div class="text-center p-5">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Loading documents...</p>
-                        </div>
+                        <div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2">Loading...</p></div>
                     }
                     else if (documents == null || !documents.Any())
                     {
                         <div class="text-center p-5">
                             <i class="bi bi-inbox" style="font-size: 4rem; color: #ccc;"></i>
                             <p class="mt-3 text-muted">No documents uploaded yet.</p>
-                            <a href="/upload" class="btn btn-primary mt-2">
-                                <i class="bi bi-cloud-upload me-2"></i>Upload Your First Document
-                            </a>
+                            <a href="/upload" class="btn btn-primary mt-2"><i class="bi bi-cloud-upload me-2"></i>Upload First Document</a>
                         </div>
                     }
                     else
                     {
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>File Name</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                        <th>Uploaded</th>
-                                        <th>Summary</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
+                                <thead><tr><th>File Name</th><th>Type</th><th>Status</th><th>Uploaded</th><th>Summary</th><th>Actions</th></tr></thead>
                                 <tbody>
                                     @foreach (var doc in documents)
                                     {
                                         <tr>
-                                            <td>
-                                                <i class="bi @GetFileIcon(doc.FileExtension) me-2"></i>
-                                                @doc.FileName
-                                            </td>
-                                            <td>
-                                                @if (!string.IsNullOrEmpty(doc.DocumentTypeName))
-                                                {
-                                                    <span class="badge bg-info">@doc.DocumentTypeName</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-secondary">Unknown</span>
-                                                }
-                                            </td>
-                                            <td>
-                                                @if (doc.Status == DocumentStatus.Processed)
-                                                {
-                                                    <span class="badge bg-success">
-                                                        <i class="bi bi-check-circle me-1"></i>Processed
-                                                    </span>
-                                                }
-                                                else if (doc.Status == DocumentStatus.Processing)
-                                                {
-                                                    <span class="badge bg-warning">
-                                                        <i class="bi bi-hourglass-split me-1"></i>Processing
-                                                    </span>
-                                                }
-                                                else if (doc.Status == DocumentStatus.Failed)
-                                                {
-                                                    <span class="badge bg-danger">
-                                                        <i class="bi bi-exclamation-triangle me-1"></i>Failed
-                                                    </span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-secondary">
-                                                        <i class="bi bi-clock me-1"></i>Pending
-                                                    </span>
-                                                }
-                                            </td>
+                                            <td><i class="bi @GetFileIcon(doc.FileExtension) me-2"></i>@doc.FileName</td>
+                                            <td><span class="badge bg-@(string.IsNullOrEmpty(doc.DocumentTypeName) ? "secondary" : "info")">@(doc.DocumentTypeName ?? "Unknown")</span></td>
+                                            <td>@GetStatusBadge(doc.Status)</td>
                                             <td>@doc.UploadedAt.ToString("g")</td>
                                             <td>
                                                 @if (!string.IsNullOrEmpty(doc.Summary))
                                                 {
-                                                    <div class="summary-cell">
-                                                        <span class="text-truncate d-inline-block" style="max-width: 200px;">
-                                                            @doc.Summary
-                                                        </span>
-                                                        <button class="btn btn-sm btn-link p-0 ms-2" @onclick="() => ShowSummaryModal(doc)">
-                                                            <i class="bi bi-eye"></i>
-                                                        </button>
-                                                    </div>
+                                                    <span class="text-truncate d-inline-block" style="max-width: 200px;">@doc.Summary</span>
+                                                    <button class="btn btn-sm btn-link p-0 ms-2" @onclick="() => ShowSummaryModal(doc)"><i class="bi bi-eye"></i></button>
                                                 }
-                                                else
-                                                {
-                                                    <span class="text-muted">-</span>
-                                                }
+                                                else { <span class="text-muted">-</span> }
                                             </td>
                                             <td>
-                                                <div class="btn-group" role="group">
-                                                    <button class="btn btn-sm btn-primary" @onclick="() => ShowSummaryModal(doc)" title="View details">
-                                                        <i class="bi bi-eye"></i> View
-                                                    </button>
-                                                    <button class="btn btn-sm btn-danger" @onclick="() => ShowDeleteConfirmation(doc)" title="Delete document">
-                                                        <i class="bi bi-trash"></i>
-                                                    </button>
-                                                </div>
+                                                <button class="btn btn-sm btn-primary me-1" @onclick="() => ShowSummaryModal(doc)"><i class="bi bi-eye"></i></button>
+                                                <button class="btn btn-sm btn-danger" @onclick="() => ShowDeleteConfirmation(doc)"><i class="bi bi-trash"></i></button>
                                             </td>
                                         </tr>
                                     }
@@ -141,111 +66,47 @@
     </div>
 </div>
 
-<!-- Summary Modal -->
 @if (showSummaryModal && selectedDocument != null)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi @GetFileIcon(selectedDocument.FileExtension) me-2"></i>
-                        @selectedDocument.FileName
-                    </h5>
+                    <h5 class="modal-title"><i class="bi @GetFileIcon(selectedDocument.FileExtension) me-2"></i>@selectedDocument.FileName</h5>
                     <button type="button" class="btn-close" @onclick="CloseSummaryModal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <h6 class="text-muted">Document Type</h6>
-                        @if (!string.IsNullOrEmpty(selectedDocument.DocumentTypeName))
-                        {
-                            <span class="badge bg-info">@selectedDocument.DocumentTypeName</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-secondary">Unknown</span>
-                        }
-                    </div>
-                    <div class="mb-3">
-                        <h6 class="text-muted">Summary</h6>
-                        <p class="text-break">@selectedDocument.Summary</p>
-                    </div>
+                    <div class="mb-3"><h6 class="text-muted">Type</h6><span class="badge bg-@(string.IsNullOrEmpty(selectedDocument.DocumentTypeName) ? "secondary" : "info")">@(selectedDocument.DocumentTypeName ?? "Unknown")</span></div>
+                    <div class="mb-3"><h6 class="text-muted">Summary</h6><p>@selectedDocument.Summary</p></div>
                     <div class="row">
-                        <div class="col-md-6">
-                            <h6 class="text-muted">Status</h6>
-                            @if (selectedDocument.Status == DocumentStatus.Processed)
-                            {
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle me-1"></i>Processed
-                                </span>
-                            }
-                            else if (selectedDocument.Status == DocumentStatus.Processing)
-                            {
-                                <span class="badge bg-warning">
-                                    <i class="bi bi-hourglass-split me-1"></i>Processing
-                                </span>
-                            }
-                            else if (selectedDocument.Status == DocumentStatus.Failed)
-                            {
-                                <span class="badge bg-danger">
-                                    <i class="bi bi-exclamation-triangle me-1"></i>Failed
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">
-                                    <i class="bi bi-clock me-1"></i>Pending
-                                </span>
-                            }
-                        </div>
-                        <div class="col-md-6">
-                            <h6 class="text-muted">Uploaded</h6>
-                            <p>@selectedDocument.UploadedAt.ToString("g")</p>
-                        </div>
+                        <div class="col-md-6"><h6 class="text-muted">Status</h6>@GetStatusBadge(selectedDocument.Status)</div>
+                        <div class="col-md-6"><h6 class="text-muted">Uploaded</h6><p>@selectedDocument.UploadedAt.ToString("g")</p></div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseSummaryModal">Close</button>
-                </div>
+                <div class="modal-footer"><button class="btn btn-secondary" @onclick="CloseSummaryModal">Close</button></div>
             </div>
         </div>
     </div>
 }
 
-<!-- Delete Confirmation Modal -->
 @if (showDeleteConfirmation && documentToDelete != null)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
-                        Confirm Delete
-                    </h5>
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Confirm Delete</h5>
                     <button type="button" class="btn-close" @onclick="CloseDeleteConfirmation"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Are you sure you want to delete this document?</p>
-                    <div class="alert alert-warning">
-                        <i class="bi bi-file-earmark me-2"></i>
-                        <strong>@documentToDelete.FileName</strong>
-                    </div>
-                    <p class="text-muted small">This action cannot be undone.</p>
+                    <p>Delete this document?</p>
+                    <div class="alert alert-warning"><strong>@documentToDelete.FileName</strong></div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseDeleteConfirmation" disabled="@isDeleting">Cancel</button>
-                    <button type="button" class="btn btn-danger" @onclick="DeleteDocument" disabled="@isDeleting">
-                        @if (isDeleting)
-                        {
-                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                            <span>Deleting...</span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-trash me-2"></i>
-                            <span>Delete</span>
-                        }
+                    <button class="btn btn-secondary" @onclick="CloseDeleteConfirmation" disabled="@isDeleting">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteDocument" disabled="@isDeleting">
+                        @if (isDeleting) { <span class="spinner-border spinner-border-sm me-2"></span> <span>Deleting...</span> }
+                        else { <i class="bi bi-trash me-2"></i> <span>Delete</span> }
                     </button>
                 </div>
             </div>
@@ -255,105 +116,51 @@
 
 @code {
     private List<Document>? documents;
-    private bool isLoading = true;
-    private bool showSummaryModal = false;
-    private bool showDeleteConfirmation = false;
-    private bool isDeleting = false;
-    private Document? selectedDocument = null;
-    private Document? documentToDelete = null;
+    private bool isLoading = true, showSummaryModal, showDeleteConfirmation, isDeleting;
+    private Document? selectedDocument, documentToDelete;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadDocuments();
-    }
+    protected override async Task OnInitializedAsync() => await LoadDocuments();
 
     private async Task LoadDocuments()
     {
         isLoading = true;
-        try
-        {
-            var allDocs = await DocumentRepository.GetAllAsync();
-            documents = allDocs
-                .OrderByDescending(d => d.UploadedAt)
-                .Take(20)
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading documents: {ex.Message}");
-            documents = new List<Document>();
-        }
-        finally
-        {
-            isLoading = false;
-        }
+        try { documents = (await DocumentRepository.GetAllAsync()).OrderByDescending(d => d.UploadedAt).Take(20).ToList(); }
+        catch { documents = []; }
+        finally { isLoading = false; }
     }
 
-    private void ShowSummaryModal(Document document)
-    {
-        selectedDocument = document;
-        showSummaryModal = true;
-    }
-
-    private void CloseSummaryModal()
-    {
-        showSummaryModal = false;
-        selectedDocument = null;
-    }
-
-    private void ShowDeleteConfirmation(Document document)
-    {
-        documentToDelete = document;
-        showDeleteConfirmation = true;
-    }
-
-    private void CloseDeleteConfirmation()
-    {
-        showDeleteConfirmation = false;
-        documentToDelete = null;
-    }
+    private void ShowSummaryModal(Document doc) { selectedDocument = doc; showSummaryModal = true; }
+    private void CloseSummaryModal() { showSummaryModal = false; selectedDocument = null; }
+    private void ShowDeleteConfirmation(Document doc) { documentToDelete = doc; showDeleteConfirmation = true; }
+    private void CloseDeleteConfirmation() { showDeleteConfirmation = false; documentToDelete = null; }
 
     private async Task DeleteDocument()
     {
         if (documentToDelete == null) return;
-
         isDeleting = true;
         try
         {
             await DocumentRepository.DeleteAsync(documentToDelete.Id);
-
-            // Remove from local list
-            if (documents != null)
-            {
-                documents.Remove(documentToDelete);
-            }
-
+            documents?.Remove(documentToDelete);
             CloseDeleteConfirmation();
-            StateHasChanged();
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error deleting document: {ex.Message}");
-            // Could show an error message to the user here
-        }
-        finally
-        {
-            isDeleting = false;
-        }
+        finally { isDeleting = false; }
     }
 
-    private string GetFileIcon(string extension)
+    private string GetFileIcon(string ext) => ext.ToLower() switch
     {
-        return extension.ToLower() switch
-        {
-            ".pdf" => "bi-file-pdf-fill text-danger",
-            ".doc" or ".docx" => "bi-file-word-fill text-primary",
-            ".xls" or ".xlsx" => "bi-file-excel-fill text-success",
-            ".txt" => "bi-file-text-fill",
-            ".csv" => "bi-file-spreadsheet-fill text-success",
-            ".jpg" or ".jpeg" or ".png" => "bi-file-image-fill text-info",
-            ".mp3" => "bi-file-music-fill text-warning",
-            _ => "bi-file-earmark-fill"
-        };
-    }
+        ".pdf" => "bi-file-pdf-fill text-danger",
+        ".doc" or ".docx" => "bi-file-word-fill text-primary",
+        ".xls" or ".xlsx" or ".csv" => "bi-file-excel-fill text-success",
+        ".txt" => "bi-file-text-fill",
+        _ => "bi-file-earmark-fill"
+    };
+
+    private RenderFragment GetStatusBadge(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Processed => @<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Processed</span>,
+        DocumentStatus.Processing => @<span class="badge bg-warning"><i class="bi bi-hourglass-split me-1"></i>Processing</span>,
+        DocumentStatus.Failed => @<span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Failed</span>,
+        _ => @<span class="badge bg-secondary"><i class="bi bi-clock me-1"></i>Pending</span>
+    };
 }

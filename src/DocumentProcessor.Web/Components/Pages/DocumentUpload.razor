@@ -3,37 +3,22 @@
 @using DocumentProcessor.Web.Data
 @using DocumentProcessor.Web.Services
 @using Microsoft.AspNetCore.Components.Forms
-@using Microsoft.Extensions.DependencyInjection
 @inject FileStorageService DocumentSource
-@inject DocumentRepository DocumentRepository
 @inject IServiceScopeFactory ServiceScopeFactory
 @inject DocumentProcessingService DocumentProcessingService
 @inject ILogger<DocumentUpload> Logger
-@inject IJSRuntime JSRuntime
-@inject NavigationManager Navigation
 @rendermode InteractiveServer
 
 <PageTitle>Upload Documents</PageTitle>
 
 <div class="container mt-4">
     <h1>Document Upload</h1>
-    
     <div class="row">
         <div class="col-md-8">
-            <!-- Upload Area -->
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">Upload Documents</h5>
-                    
-                    <!-- Drag and Drop Area -->
-                    <div class="upload-area @(_isDragOver ? "drag-over" : "")"
-                         @ondragenter="HandleDragEnter"
-                         @ondragleave="HandleDragLeave"
-                         @ondragover="HandleDragOver"
-                         @ondragover:preventDefault="true"
-                         @ondrop="HandleDrop"
-                         @ondrop:preventDefault="true">
-                        
+                    <div class="upload-area @(_isDragOver ? "drag-over" : "")" @ondragenter="() => _isDragOver = true" @ondragleave="() => _isDragOver = false">
                         <div class="text-center p-5">
                             <i class="bi bi-cloud-upload" style="font-size: 3rem;"></i>
                             <p class="mt-3">Drag and drop files here or click to browse</p>
@@ -41,20 +26,13 @@
                                 <i class="bi bi-info-circle me-1"></i>
                                 Suggested location: <code>C:\MAM319\DPS\docs</code>
                             </p>
-                            
-                            <!-- Use a label to trigger the file input -->
                             <label for="fileUploadInput" class="btn btn-primary mt-2" style="cursor: pointer;">
                                 <i class="bi bi-folder-open me-2"></i>Choose Files
-                                <InputFile id="fileUploadInput"
-                                          OnChange="@LoadFiles"
-                                          multiple
-                                          accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.jpg,.jpeg,.png,.mp3"
-                                          style="display: none;" />
+                                <InputFile id="fileUploadInput" OnChange="@LoadFiles" multiple accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.csv" style="display: none;" />
                             </label>
                         </div>
                     </div>
 
-                    <!-- File List -->
                     @if (_selectedFiles.Any())
                     {
                         <div class="mt-4">
@@ -63,60 +41,31 @@
                                 @foreach (var file in _selectedFiles)
                                 {
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <i class="bi bi-file-earmark me-2"></i>
-                                            <span>@file.Name</span>
-                                            <small class="text-muted ms-2">(@GetFileSize(file.Size))</small>
-                                        </div>
-                                        <button class="btn btn-sm btn-danger" @onclick="() => RemoveFile(file)">
-                                            <i class="bi bi-x"></i>
-                                        </button>
+                                        <div><i class="bi bi-file-earmark me-2"></i>@file.Name <small class="text-muted ms-2">(@GetFileSize(file.Size))</small></div>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => _selectedFiles.Remove(file)"><i class="bi bi-x"></i></button>
                                     </li>
                                 }
                             </ul>
-                            
                             <div class="mt-3">
                                 <button class="btn btn-primary" @onclick="UploadFiles" disabled="@_isUploading">
-                                    @if (_isUploading)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                                        <span>Uploading...</span>
-                                    }
-                                    else
-                                    {
-                                        <i class="bi bi-upload me-2"></i>
-                                        <span>Upload Files</span>
-                                    }
+                                    @if (_isUploading) { <span class="spinner-border spinner-border-sm me-2"></span> <span>Uploading...</span> }
+                                    else { <i class="bi bi-upload me-2"></i> <span>Upload Files</span> }
                                 </button>
-                                <button class="btn btn-secondary ms-2" @onclick="ClearFiles" disabled="@_isUploading">
-                                    Clear All
-                                </button>
+                                <button class="btn btn-secondary ms-2" @onclick="() => { _selectedFiles.Clear(); _uploadProgress.Clear(); }" disabled="@_isUploading">Clear All</button>
                             </div>
                         </div>
                     }
 
-                    <!-- Upload Progress -->
                     @if (_uploadProgress.Any())
                     {
                         <div class="mt-4">
                             <h6>Upload Progress:</h6>
-                            @foreach (var progress in _uploadProgress)
+                            @foreach (var p in _uploadProgress)
                             {
                                 <div class="mb-2">
-                                    <div class="d-flex justify-content-between">
-                                        <small>@progress.FileName</small>
-                                        <small>@progress.Progress%</small>
-                                    </div>
-                                    <div class="progress">
-                                        <div class="progress-bar @(progress.IsComplete ? "bg-success" : "")" 
-                                             role="progressbar" 
-                                             style="width: @progress.Progress%">
-                                        </div>
-                                    </div>
-                                    @if (!string.IsNullOrEmpty(progress.Error))
-                                    {
-                                        <small class="text-danger">@progress.Error</small>
-                                    }
+                                    <div class="d-flex justify-content-between"><small>@p.FileName</small><small>@p.Progress%</small></div>
+                                    <div class="progress"><div class="progress-bar @(p.IsComplete ? "bg-success" : "")" style="width: @p.Progress%"></div></div>
+                                    @if (!string.IsNullOrEmpty(p.Error)) { <small class="text-danger">@p.Error</small> }
                                 </div>
                             }
                         </div>
@@ -124,53 +73,35 @@
                 </div>
             </div>
 
-            <!-- Success/Error Messages -->
             @if (_messages.Any())
             {
                 <div class="mt-3">
-                    @foreach (var message in _messages)
+                    @foreach (var m in _messages)
                     {
-                        <div class="alert alert-@message.Type alert-dismissible fade show" role="alert">
-                            @message.Text
-                            <button type="button" class="btn-close" @onclick="() => RemoveMessage(message)"></button>
-                        </div>
+                        <div class="alert alert-@m.Type alert-dismissible fade show">@m.Text<button type="button" class="btn-close" @onclick="() => _messages.Remove(m)"></button></div>
                     }
                 </div>
             }
         </div>
 
-        <!-- Recent Uploads Sidebar -->
         <div class="col-md-4">
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">Recent Uploads</h5>
-                    
                     @if (_recentDocuments.Any())
                     {
                         <div class="list-group list-group-flush">
                             @foreach (var doc in _recentDocuments)
                             {
                                 <div class="list-group-item px-0">
-                                    <div class="d-flex w-100 justify-content-between">
-                                        <h6 class="mb-1">@doc.FileName</h6>
-                                        <small>@doc.CreatedAt.ToString("g")</small>
-                                    </div>
-                                    <p class="mb-1 small text-muted">
-                                        @GetFileSize(doc.FileSize) • @doc.ContentType
-                                    </p>
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <small class="text-muted">
-                                            Status: <span class="badge bg-@GetStatusColor(doc.Status)">@doc.Status</span>
-                                        </small>
-                                    </div>
+                                    <div class="d-flex w-100 justify-content-between"><h6 class="mb-1">@doc.FileName</h6><small>@doc.CreatedAt.ToString("g")</small></div>
+                                    <p class="mb-1 small text-muted">@GetFileSize(doc.FileSize)</p>
+                                    <small class="text-muted">Status: <span class="badge bg-@GetStatusColor(doc.Status)">@doc.Status</span></small>
                                 </div>
                             }
                         </div>
                     }
-                    else
-                    {
-                        <p class="text-muted">No recent uploads</p>
-                    }
+                    else { <p class="text-muted">No recent uploads</p> }
                 </div>
             </div>
         </div>
@@ -178,25 +109,9 @@
 </div>
 
 <style>
-    .upload-area {
-        border: 2px dashed #dee2e6;
-        border-radius: 0.375rem;
-        background-color: #f8f9fa;
-        transition: all 0.3s ease;
-        cursor: pointer;
-        position: relative;
-    }
-
-    .upload-area:hover {
-        border-color: #0d6efd;
-        background-color: #e7f1ff;
-    }
-
-    .upload-area.drag-over {
-        border-color: #0d6efd;
-        background-color: #cfe2ff;
-        border-width: 3px;
-    }
+    .upload-area { border: 2px dashed #dee2e6; border-radius: 0.375rem; background-color: #f8f9fa; transition: all 0.3s ease; cursor: pointer; }
+    .upload-area:hover { border-color: #0d6efd; background-color: #e7f1ff; }
+    .upload-area.drag-over { border-color: #0d6efd; background-color: #cfe2ff; border-width: 3px; }
 </style>
 
 @code {
@@ -204,276 +119,119 @@
     private List<UploadProgress> _uploadProgress = new();
     private List<Message> _messages = new();
     private List<Document> _recentDocuments = new();
-    private bool _isUploading = false;
-    private bool _isDragOver = false;
-    private const long MaxFileSize = 50 * 1024 * 1024; // 50MB
+    private bool _isUploading, _isDragOver;
+    private const long MaxFileSize = 50 * 1024 * 1024;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadRecentDocuments();
-    }
+    protected override async Task OnInitializedAsync() => await LoadRecentDocuments();
 
     private async Task LoadRecentDocuments()
     {
         try
         {
             using var scope = ServiceScopeFactory.CreateScope();
-            var documentRepo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
-            var documents = await documentRepo.GetAllAsync();
-            _recentDocuments = documents
-                .OrderByDescending(d => d.CreatedAt)
-                .Take(5)
-                .ToList();
+            var repo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
+            _recentDocuments = (await repo.GetAllAsync()).OrderByDescending(d => d.CreatedAt).Take(5).ToList();
         }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error loading recent documents");
-        }
+        catch (Exception ex) { Logger.LogError(ex, "Error loading recent documents"); }
     }
 
     private void LoadFiles(InputFileChangeEventArgs e)
     {
         _selectedFiles.Clear();
         _messages.Clear();
-        
         try
         {
-            var files = e.GetMultipleFiles(10); // Limit to 10 files at once
-            
-            foreach (var file in files)
+            var validExts = new[] { ".pdf", ".doc", ".docx", ".txt", ".xlsx", ".xls", ".csv" };
+            foreach (var file in e.GetMultipleFiles(10))
             {
-                if (file.Size > MaxFileSize)
-                {
-                    AddMessage($"File '{file.Name}' exceeds maximum size of {GetFileSize(MaxFileSize)}", "warning");
-                    continue;
-                }
-                
-                if (!IsValidFileType(file.Name))
-                {
-                    AddMessage($"File '{file.Name}' has an unsupported file type", "warning");
-                    continue;
-                }
-                
+                if (file.Size > MaxFileSize) { AddMessage($"'{file.Name}' exceeds max size", "warning"); continue; }
+                if (!validExts.Contains(Path.GetExtension(file.Name).ToLowerInvariant())) { AddMessage($"'{file.Name}' unsupported type", "warning"); continue; }
                 _selectedFiles.Add(file);
             }
-            
-            if (_selectedFiles.Any())
-            {
-                AddMessage($"Selected {_selectedFiles.Count} file(s) for upload", "info");
-            }
+            if (_selectedFiles.Any()) AddMessage($"Selected {_selectedFiles.Count} file(s)", "info");
         }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error loading files");
-            AddMessage("Error loading files. Please try again.", "danger");
-        }
-        
+        catch { AddMessage("Error loading files", "danger"); }
         StateHasChanged();
     }
 
     private async Task UploadFiles()
     {
-        if (!_selectedFiles.Any())
-            return;
-
+        if (!_selectedFiles.Any()) return;
         _isUploading = true;
         _uploadProgress.Clear();
         _messages.Clear();
-
-        var userId = "System";
 
         foreach (var file in _selectedFiles)
         {
             var progress = new UploadProgress { FileName = file.Name };
             _uploadProgress.Add(progress);
-            
             try
             {
-                Logger.LogInformation("Starting upload for file: {FileName}, User: {UserId}", file.Name, userId);
-                
-                // Create document entity
-                var document = new Document
+                var doc = new Document
                 {
-                    Id = Guid.NewGuid(),
-                    FileName = file.Name,
-                    OriginalFileName = file.Name,
-                    FileExtension = Path.GetExtension(file.Name).ToLowerInvariant(),
-                    ContentType = file.ContentType,
-                    FileSize = file.Size,
-                    Status = DocumentStatus.Pending,
-                    Source = DocumentProcessor.Web.Models.DocumentSource.LocalUpload,
-                    UploadedAt = DateTime.UtcNow,
-                    UploadedBy = userId,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    Id = Guid.NewGuid(), FileName = file.Name, OriginalFileName = file.Name,
+                    FileExtension = Path.GetExtension(file.Name).ToLowerInvariant(), ContentType = file.ContentType,
+                    FileSize = file.Size, Status = DocumentStatus.Pending, Source = DocumentProcessor.Web.Models.DocumentSource.LocalUpload,
+                    UploadedAt = DateTime.UtcNow, UploadedBy = "System", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
                 };
 
-                // Upload file to storage
                 using var stream = file.OpenReadStream(MaxFileSize);
-                var storagePath = await DocumentSource.SaveDocumentAsync(stream, file.Name);
-                document.StoragePath = storagePath;
-                
-                Logger.LogInformation("File uploaded to storage: {StoragePath}", storagePath);
+                doc.StoragePath = await DocumentSource.SaveDocumentAsync(stream, file.Name);
                 progress.Progress = 50;
                 StateHasChanged();
 
-                // Save document to database using a separate scope to avoid tracking conflicts
-                Logger.LogInformation("Saving document to database: {DocumentId}", document.Id);
-                Document savedDocument;
-                try
+                Document savedDoc;
+                using (var scope = ServiceScopeFactory.CreateScope())
                 {
-                    using var scope = ServiceScopeFactory.CreateScope();
-                    var documentRepo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
-                    savedDocument = await documentRepo.AddAsync(document);
-                    Logger.LogInformation("Document saved successfully: {DocumentId}", savedDocument.Id);
+                    savedDoc = await scope.ServiceProvider.GetRequiredService<DocumentRepository>().AddAsync(doc);
                 }
-                catch (Exception saveEx)
-                {
-                    Logger.LogError(saveEx, "Failed to save document to database: {DocumentId}", document.Id);
-                    throw;
-                }
-                
                 progress.Progress = 75;
                 StateHasChanged();
 
-                // Queue document for AI processing using the database queue
                 try
                 {
-                    var docId = savedDocument.Id;
-                    var docFileName = savedDocument.FileName;
-                    
-                    Logger.LogInformation("Attempting to queue document {DocumentId} ({FileName}) for processing in database queue", docId, docFileName);
-                    
-                    // Queue the document using IDocumentProcessingService which will add it to the database queue
-                    var queueId = await DocumentProcessingService.QueueDocumentForProcessingAsync(docId);
-                    
-                    Logger.LogInformation("Document {DocumentId} successfully queued with queue ID {QueueId}", docId, queueId);
-                    
-                    AddMessage($"'{file.Name}' uploaded and queued for AI processing. Check the Documents page to see processing status.", "success");
+                    await DocumentProcessingService.QueueDocumentForProcessingAsync(savedDoc.Id);
+                    AddMessage($"'{file.Name}' uploaded and queued", "success");
                 }
-                catch (Exception queueEx)
+                catch (Exception ex)
                 {
-                    Logger.LogError(queueEx, "Failed to queue document {DocumentId} for processing", savedDocument.Id);
-                    AddMessage($"'{file.Name}' uploaded successfully but could not be queued for processing: {queueEx.Message}", "warning");
+                    Logger.LogError(ex, "Queue failed");
+                    AddMessage($"'{file.Name}' uploaded but queue failed", "warning");
                 }
-                
                 progress.Progress = 100;
                 progress.IsComplete = true;
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error uploading file: {FileName}", file.Name);
+                Logger.LogError(ex, "Upload failed");
                 progress.Error = "Upload failed";
-                AddMessage($"Failed to upload '{file.Name}': {ex.Message}", "danger");
+                AddMessage($"Failed '{file.Name}'", "danger");
             }
-            
             StateHasChanged();
         }
 
         _isUploading = false;
         _selectedFiles.Clear();
         await LoadRecentDocuments();
-        
-        // Show completion message with navigation option
-        if (_uploadProgress.All(p => p.IsComplete))
-        {
-            AddMessage("All files uploaded successfully! Documents are being processed in the background.", "success");
-            
-            // Optionally navigate to document list after a delay
-            await Task.Delay(2000);
-            StateHasChanged();
-        }
-    }
-
-    private void RemoveFile(IBrowserFile file)
-    {
-        _selectedFiles.Remove(file);
-    }
-
-    private void ClearFiles()
-    {
-        _selectedFiles.Clear();
-        _uploadProgress.Clear();
-    }
-
-    private void HandleDragEnter()
-    {
-        _isDragOver = true;
-    }
-
-    private void HandleDragLeave()
-    {
-        _isDragOver = false;
-    }
-
-    private void HandleDragOver(DragEventArgs e)
-    {
-        e.DataTransfer.DropEffect = "copy";
-    }
-
-    private async Task HandleDrop(DragEventArgs e)
-    {
-        _isDragOver = false;
-        // Note: Blazor doesn't support getting files from DragEventArgs directly
-        // This would require JavaScript interop for full functionality
-        await Task.CompletedTask;
-    }
-
-    private bool IsValidFileType(string fileName)
-    {
-        var validExtensions = new[] { ".pdf", ".doc", ".docx", ".txt", ".xlsx", ".xls", ".jpg", ".jpeg", ".png", ".mp3" };
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        return validExtensions.Contains(extension);
     }
 
     private string GetFileSize(long bytes)
     {
         string[] sizes = { "B", "KB", "MB", "GB" };
-        int order = 0;
         double size = bytes;
-        
-        while (size >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            size /= 1024;
-        }
-        
+        int order = 0;
+        while (size >= 1024 && order < 3) { order++; size /= 1024; }
         return $"{size:0.##} {sizes[order]}";
     }
 
-    private string GetStatusColor(DocumentStatus status)
+    private string GetStatusColor(DocumentStatus status) => status switch
     {
-        return status switch
-        {
-            DocumentStatus.Pending => "warning",
-            DocumentStatus.Processing => "info",
-            DocumentStatus.Processed => "success",
-            DocumentStatus.Failed => "danger",
-            _ => "secondary"
-        };
-    }
+        DocumentStatus.Pending => "warning", DocumentStatus.Processing => "info",
+        DocumentStatus.Processed => "success", DocumentStatus.Failed => "danger", _ => "secondary"
+    };
 
-    private void AddMessage(string text, string type)
-    {
-        _messages.Add(new Message { Text = text, Type = type });
-    }
+    private void AddMessage(string text, string type) => _messages.Add(new Message { Text = text, Type = type });
 
-    private void RemoveMessage(Message message)
-    {
-        _messages.Remove(message);
-    }
-
-    private class UploadProgress
-    {
-        public string FileName { get; set; } = "";
-        public int Progress { get; set; }
-        public bool IsComplete { get; set; }
-        public string? Error { get; set; }
-    }
-
-    private class Message
-    {
-        public string Text { get; set; } = "";
-        public string Type { get; set; } = "info";
-    }
+    record UploadProgress { public string FileName { get; set; } = ""; public int Progress { get; set; } public bool IsComplete { get; set; } public string? Error { get; set; } }
+    record Message { public string Text { get; set; } = ""; public string Type { get; set; } = "info"; }
 }

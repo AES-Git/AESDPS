@@ -1,107 +1,34 @@
 using Microsoft.EntityFrameworkCore;
 using DocumentProcessor.Web.Models;
-using System.Linq.Expressions;
 
 namespace DocumentProcessor.Web.Data;
 
 public class DocumentRepository(AppDbContext context)
 {
-    public async Task<Document?> GetByIdAsync(Guid id)
+    public Task<Document?> GetByIdAsync(Guid id) => context.Documents.FirstOrDefaultAsync(d => d.Id == id);
+    public Task<List<Document>> GetAllAsync() => context.Documents.Where(d => !d.IsDeleted).OrderByDescending(d => d.UploadedAt).ToListAsync();
+    public Task<List<Document>> GetByStatusAsync(DocumentStatus status) => context.Documents.Where(d => d.Status == status).OrderByDescending(d => d.UploadedAt).ToListAsync();
+
+    public async Task<Document> AddAsync(Document doc)
     {
-        return await context.Documents.FirstOrDefaultAsync(d => d.Id == id);
-    }
-
-    public async Task<IEnumerable<Document>> GetAllAsync()
-    {
-        return await context.Documents
-            .Where(d => !d.IsDeleted)
-            .OrderByDescending(d => d.UploadedAt)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<Document>> GetByStatusAsync(DocumentStatus status)
-    {
-        return await context.Documents
-            .Where(d => d.Status == status)
-            .OrderByDescending(d => d.UploadedAt)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<Document>> GetPendingDocumentsAsync(int limit = 100)
-    {
-        return await context.Documents
-            .Where(d => d.Status == DocumentStatus.Pending || d.Status == DocumentStatus.Queued)
-            .OrderBy(d => d.UploadedAt)
-            .Take(limit)
-            .ToListAsync();
-    }
-
-    public async Task<Document> AddAsync(Document document)
-    {
-        if (document.Id == Guid.Empty)
-            document.Id = Guid.NewGuid();
-
-        document.CreatedAt = DateTime.UtcNow;
-        document.UpdatedAt = DateTime.UtcNow;
-
-        await context.Documents.AddAsync(document);
+        if (doc.Id == Guid.Empty) doc.Id = Guid.NewGuid();
+        doc.CreatedAt = doc.UpdatedAt = DateTime.UtcNow;
+        await context.Documents.AddAsync(doc);
         await context.SaveChangesAsync();
-        return document;
+        return doc;
     }
 
-    public async Task<Document> UpdateAsync(Document document)
+    public async Task<Document> UpdateAsync(Document doc)
     {
-        document.UpdatedAt = DateTime.UtcNow;
-        context.Documents.Update(document);
+        doc.UpdatedAt = DateTime.UtcNow;
+        context.Documents.Update(doc);
         await context.SaveChangesAsync();
-        return document;
+        return doc;
     }
 
     public async Task DeleteAsync(Guid id)
     {
-        var document = await context.Documents.FindAsync(id);
-        if (document != null)
-        {
-            context.Documents.Remove(document);
-            await context.SaveChangesAsync();
-        }
-    }
-
-    public async Task SoftDeleteAsync(Guid id)
-    {
-        var document = await context.Documents.FindAsync(id);
-        if (document != null)
-        {
-            document.IsDeleted = true;
-            document.DeletedAt = DateTime.UtcNow;
-            document.UpdatedAt = DateTime.UtcNow;
-            context.Documents.Update(document);
-            await context.SaveChangesAsync();
-        }
-    }
-
-    public async Task<bool> ExistsAsync(Guid id)
-    {
-        return await context.Documents.AnyAsync(d => d.Id == id);
-    }
-
-    public async Task<int> CountAsync()
-    {
-        return await context.Documents.CountAsync();
-    }
-
-    public async Task<int> CountAsync(Expression<Func<Document, bool>> predicate)
-    {
-        return await context.Documents.CountAsync(predicate);
-    }
-
-    public async Task<IEnumerable<Document>> GetPagedAsync(int pageNumber, int pageSize)
-    {
-        return await context.Documents
-            .Where(d => !d.IsDeleted)
-            .OrderByDescending(d => d.UploadedAt)
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
+        var doc = await context.Documents.FindAsync(id);
+        if (doc != null) { context.Documents.Remove(doc); await context.SaveChangesAsync(); }
     }
 }

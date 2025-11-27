@@ -5,153 +5,91 @@ using Microsoft.Extensions.Hosting;
 
 namespace DocumentProcessor.Web.Services;
 
-public class DocumentProcessingService(
-    IServiceScopeFactory serviceScopeFactory,
-    ILogger<DocumentProcessingService> logger) : BackgroundService
+public class DocumentProcessingService(IServiceScopeFactory serviceScopeFactory, ILogger<DocumentProcessingService> logger) : BackgroundService
 {
     private readonly Channel<Guid> _queue = Channel.CreateUnbounded<Guid>();
-    private readonly SemaphoreSlim _semaphore = new(MaxConcurrency, MaxConcurrency);
-    private const int MaxConcurrency = 3;
+    private readonly SemaphoreSlim _semaphore = new(3, 3);
 
     public async Task<Guid> QueueDocumentForProcessingAsync(Guid documentId)
     {
         using var scope = serviceScopeFactory.CreateScope();
-        var documentRepository = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
-
-        var document = await documentRepository.GetByIdAsync(documentId);
-        if (document == null)
-        {
-            throw new ArgumentException($"Document with ID {documentId} not found");
-        }
-
-        document.Status = DocumentStatus.Queued;
-        document.ProcessingStatus = "Queued";
-        document.ProcessingRetryCount = 0;
-        document.UpdatedAt = DateTime.UtcNow;
-        await documentRepository.UpdateAsync(document);
-
+        var repo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
+        var doc = await repo.GetByIdAsync(documentId) ?? throw new ArgumentException($"Document {documentId} not found");
+        doc.Status = DocumentStatus.Queued;
+        doc.ProcessingStatus = "Queued";
+        doc.ProcessingRetryCount = 0;
+        doc.UpdatedAt = DateTime.UtcNow;
+        await repo.UpdateAsync(doc);
         await _queue.Writer.WriteAsync(documentId);
-        logger.LogInformation("Document {DocumentId} queued for processing", documentId);
-
         return documentId;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        logger.LogInformation("Document Processing Service is starting with max concurrency: {MaxConcurrency}", MaxConcurrency);
-
-        List<Task> tasks = [];
-        for (int i = 0; i < MaxConcurrency; i++)
-        {
-            tasks.Add(ProcessTasksAsync(i, stoppingToken));
-        }
-
-        await Task.WhenAll(tasks);
-        logger.LogInformation("Document Processing Service is stopping");
+        logger.LogInformation("Processing service starting with 3 workers");
+        await Task.WhenAll(Enumerable.Range(0, 3).Select(i => ProcessTasksAsync(i, ct)));
     }
 
-    private async Task ProcessTasksAsync(int workerId, CancellationToken stoppingToken)
+    private async Task ProcessTasksAsync(int id, CancellationToken ct)
     {
-        logger.LogInformation("Worker {WorkerId} started", workerId);
-
-        await foreach (var documentId in _queue.Reader.ReadAllAsync(stoppingToken))
+        await foreach (var docId in _queue.Reader.ReadAllAsync(ct))
         {
-            await _semaphore.WaitAsync(stoppingToken);
-
-            try
-            {
-                logger.LogInformation("Worker {WorkerId} processing document {DocumentId}", workerId, documentId);
-                await ProcessDocumentAsync(documentId);
-                logger.LogInformation("Worker {WorkerId} completed document {DocumentId}", workerId, documentId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Worker {WorkerId} encountered error processing document {DocumentId}", workerId, documentId);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
+            await _semaphore.WaitAsync(ct);
+            try { await ProcessDocumentAsync(docId); }
+            catch (Exception ex) { logger.LogError(ex, "Worker {Id} error on {DocId}", id, docId); }
+            finally { _semaphore.Release(); }
         }
-
-        logger.LogInformation("Worker {WorkerId} stopped", workerId);
     }
 
     private async Task ProcessDocumentAsync(Guid documentId)
     {
         using var scope = serviceScopeFactory.CreateScope();
-        var documentRepository = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
-        var fileStorage = scope.ServiceProvider.GetRequiredService<FileStorageService>();
-        var aiService = scope.ServiceProvider.GetRequiredService<AIService>();
-
-        var document = await documentRepository.GetByIdAsync(documentId);
-        if (document == null)
-        {
-            throw new ArgumentException($"Document with ID {documentId} not found");
-        }
+        var repo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
+        var storage = scope.ServiceProvider.GetRequiredService<FileStorageService>();
+        var ai = scope.ServiceProvider.GetRequiredService<AIService>();
+        var doc = await repo.GetByIdAsync(documentId) ?? throw new ArgumentException($"Document {documentId} not found");
 
         try
         {
-            document.Status = DocumentStatus.Processing;
-            document.ProcessingStatus = "Processing";
-            document.ProcessingStartedAt = DateTime.UtcNow;
-            document.UpdatedAt = DateTime.UtcNow;
-            await documentRepository.UpdateAsync(document);
+            doc.Status = DocumentStatus.Processing;
+            doc.ProcessingStatus = "Processing";
+            doc.ProcessingStartedAt = DateTime.UtcNow;
+            doc.UpdatedAt = DateTime.UtcNow;
+            await repo.UpdateAsync(doc);
 
-            logger.LogInformation("Processing document {DocumentId}", documentId);
-
-            await using var classificationStream = await fileStorage.GetDocumentAsync(document.StoragePath);
-            await using var summaryStream = await fileStorage.GetDocumentAsync(document.StoragePath);
-
-            var classificationTask = aiService.ClassifyDocumentAsync(document, classificationStream);
-            var summaryTask = aiService.SummarizeDocumentAsync(document, summaryStream);
-
+            await using var stream1 = await storage.GetDocumentAsync(doc.StoragePath);
+            await using var stream2 = await storage.GetDocumentAsync(doc.StoragePath);
+            var classificationTask = ai.ClassifyDocumentAsync(doc, stream1);
+            var summaryTask = ai.SummarizeDocumentAsync(doc, stream2);
             await Task.WhenAll(classificationTask, summaryTask);
-
             var classification = await classificationTask;
             var summary = await summaryTask;
 
-            document.Status = DocumentStatus.Processed;
-            document.ProcessedAt = DateTime.UtcNow;
-            document.ProcessingStatus = "Completed";
-            document.ProcessingCompletedAt = DateTime.UtcNow;
-            document.UpdatedAt = DateTime.UtcNow;
-
-            if (summary != null && !string.IsNullOrEmpty(summary.Summary))
+            doc.Status = DocumentStatus.Processed;
+            doc.ProcessedAt = DateTime.UtcNow;
+            doc.ProcessingStatus = "Completed";
+            doc.ProcessingCompletedAt = DateTime.UtcNow;
+            doc.UpdatedAt = DateTime.UtcNow;
+            if (!string.IsNullOrEmpty(summary?.Summary)) doc.Summary = summary.Summary;
+            if (!string.IsNullOrEmpty(classification?.PrimaryCategory))
             {
-                document.Summary = summary.Summary;
+                doc.DocumentTypeName = classification.PrimaryCategory;
+                doc.DocumentTypeCategory = classification.PrimaryCategory;
+                if (string.IsNullOrEmpty(doc.ExtractedText))
+                    doc.ExtractedText = $"Classification: {classification.PrimaryCategory}" + (classification.Tags.Any() ? $"; Tags: {string.Join(", ", classification.Tags)}" : "");
             }
-
-            if (classification != null && !string.IsNullOrEmpty(classification.PrimaryCategory))
-            {
-                document.DocumentTypeName = classification.PrimaryCategory;
-                document.DocumentTypeCategory = classification.PrimaryCategory;
-
-                if (string.IsNullOrEmpty(document.ExtractedText))
-                {
-                    document.ExtractedText = $"Classification: {classification.PrimaryCategory}";
-                    if (classification.Tags.Count != 0)
-                    {
-                        document.ExtractedText += $"; Tags: {string.Join(", ", classification.Tags)}";
-                    }
-                }
-            }
-
-            await documentRepository.UpdateAsync(document);
-
-            logger.LogInformation("Successfully processed document {DocumentId}", documentId);
+            await repo.UpdateAsync(doc);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error processing document {DocumentId}", documentId);
-
-            document.Status = DocumentStatus.Failed;
-            document.ProcessingStatus = "Failed";
-            document.ProcessingErrorMessage = ex.Message;
-            document.ProcessingCompletedAt = DateTime.UtcNow;
-            document.ProcessingRetryCount++;
-            document.UpdatedAt = DateTime.UtcNow;
-            await documentRepository.UpdateAsync(document);
+            logger.LogError(ex, "Process failed {DocumentId}", documentId);
+            doc.Status = DocumentStatus.Failed;
+            doc.ProcessingStatus = "Failed";
+            doc.ProcessingErrorMessage = ex.Message;
+            doc.ProcessingCompletedAt = DateTime.UtcNow;
+            doc.ProcessingRetryCount++;
+            doc.UpdatedAt = DateTime.UtcNow;
+            await repo.UpdateAsync(doc);
         }
     }
 }

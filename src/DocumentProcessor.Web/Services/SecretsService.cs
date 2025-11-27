@@ -7,100 +7,22 @@ namespace DocumentProcessor.Web.Services;
 
 public class SecretsService
 {
-    private readonly IAmazonSecretsManager _secretsManager;
+    private readonly IAmazonSecretsManager _sm = new AmazonSecretsManagerClient(RegionEndpoint.USEast1);
 
-    public SecretsService()
+    public async Task<string> GetSecretByDescriptionPrefixAsync(string prefix)
     {
-        _secretsManager = new AmazonSecretsManagerClient(RegionEndpoint.USEast1);
-    }
-
-    public async Task<string> GetSecretAsync(string secretName)
-    {
-        try
-        {
-            var request = new GetSecretValueRequest
-            {
-                SecretId = secretName
-            };
-
-            var response = await _secretsManager.GetSecretValueAsync(request);
-            return response.SecretString;
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Error retrieving secret '{secretName}': {ex.Message}", ex);
-        }
-    }
-
-    public async Task<string> GetSecretByDescriptionPrefixAsync(string descriptionPrefix)
-    {
-        try
-        {
-            var listRequest = new ListSecretsRequest();
-            var listResponse = await _secretsManager.ListSecretsAsync(listRequest);
-
-            foreach (var secret in listResponse.SecretList)
-            {
-                if (!string.IsNullOrEmpty(secret.Description) &&
-                    secret.Description.StartsWith(descriptionPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    var getRequest = new GetSecretValueRequest
-                    {
-                        SecretId = secret.ARN
-                    };
-                    var getResponse = await _secretsManager.GetSecretValueAsync(getRequest);
-                    return getResponse.SecretString;
-                }
-            }
-
-            throw new Exception($"No secret found with description starting with '{descriptionPrefix}'");
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Error finding secret by description prefix '{descriptionPrefix}': {ex.Message}", ex);
-        }
+        var list = await _sm.ListSecretsAsync(new ListSecretsRequest());
+        foreach (var s in list.SecretList)
+            if (!string.IsNullOrEmpty(s.Description) && s.Description.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return (await _sm.GetSecretValueAsync(new GetSecretValueRequest { SecretId = s.ARN })).SecretString;
+        throw new Exception($"Secret not found: {prefix}");
     }
 
     public string GetFieldFromSecret(string secretJson, string fieldName)
     {
-        try
-        {
-            using var document = JsonDocument.Parse(secretJson);
-            if (document.RootElement.TryGetProperty(fieldName, out var value))
-            {
-                return value.ValueKind switch
-                {
-                    JsonValueKind.String => value.GetString() ?? string.Empty,
-                    JsonValueKind.Number => value.GetInt32().ToString(),
-                    _ => value.ToString()
-                };
-            }
-            throw new Exception($"Field '{fieldName}' not found in secret");
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Error parsing secret field '{fieldName}': {ex.Message}", ex);
-        }
-    }
-
-    public async Task<string> BuildConnectionStringAsync(string secretName, string databaseName)
-    {
-        try
-        {
-            var secretJson = await GetSecretAsync(secretName);
-            using var document = JsonDocument.Parse(secretJson);
-            var root = document.RootElement;
-
-            var host = root.GetProperty("host").GetString();
-            var port = root.GetProperty("port").GetInt32();
-            var username = root.GetProperty("username").GetString();
-            var password = root.GetProperty("password").GetString();
-
-            return $"Server={host},{port};Database={databaseName};User Id={username};Password={password};TrustServerCertificate=True;";
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"Error building connection string from secret '{secretName}': {ex.Message}", ex);
-        }
+        using var doc = JsonDocument.Parse(secretJson);
+        if (doc.RootElement.TryGetProperty(fieldName, out var val))
+            return val.ValueKind == JsonValueKind.String ? val.GetString() ?? "" : val.ValueKind == JsonValueKind.Number ? val.GetInt32().ToString() : val.ToString();
+        throw new Exception($"Field not found: {fieldName}");
     }
 }
