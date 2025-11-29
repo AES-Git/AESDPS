@@ -18,7 +18,6 @@ public class DocumentProcessingService(IServiceScopeFactory serviceScopeFactory,
         doc.Status = DocumentStatus.Queued;
         doc.ProcessingStatus = "Queued";
         doc.ProcessingRetryCount = 0;
-        doc.UpdatedAt = DateTime.UtcNow;
         await repo.UpdateAsync(doc);
         await _queue.Writer.WriteAsync(documentId);
         return documentId;
@@ -53,8 +52,6 @@ public class DocumentProcessingService(IServiceScopeFactory serviceScopeFactory,
         {
             doc.Status = DocumentStatus.Processing;
             doc.ProcessingStatus = "Processing";
-            doc.ProcessingStartedAt = DateTime.UtcNow;
-            doc.UpdatedAt = DateTime.UtcNow;
             await repo.UpdateAsync(doc);
 
             await using var stream1 = await storage.GetDocumentAsync(doc.StoragePath);
@@ -66,10 +63,7 @@ public class DocumentProcessingService(IServiceScopeFactory serviceScopeFactory,
             var summary = await summaryTask;
 
             doc.Status = DocumentStatus.Processed;
-            doc.ProcessedAt = DateTime.UtcNow;
             doc.ProcessingStatus = "Completed";
-            doc.ProcessingCompletedAt = DateTime.UtcNow;
-            doc.UpdatedAt = DateTime.UtcNow;
             if (!string.IsNullOrEmpty(summary?.Summary)) doc.Summary = summary.Summary;
             if (!string.IsNullOrEmpty(classification?.PrimaryCategory))
             {
@@ -86,9 +80,7 @@ public class DocumentProcessingService(IServiceScopeFactory serviceScopeFactory,
             doc.Status = DocumentStatus.Failed;
             doc.ProcessingStatus = "Failed";
             doc.ProcessingErrorMessage = ex.Message;
-            doc.ProcessingCompletedAt = DateTime.UtcNow;
             doc.ProcessingRetryCount++;
-            doc.UpdatedAt = DateTime.UtcNow;
             await repo.UpdateAsync(doc);
         }
     }

@@ -94,7 +94,7 @@
                             @foreach (var doc in _recentDocuments)
                             {
                                 <div class="list-group-item px-0">
-                                    <div class="d-flex w-100 justify-content-between"><h6 class="mb-1">@doc.FileName</h6><small>@doc.CreatedAt.ToString("g")</small></div>
+                                    <h6 class="mb-1">@doc.FileName</h6>
                                     <p class="mb-1 small text-muted">@GetFileSize(doc.FileSize)</p>
                                     <small class="text-muted">Status: <span class="badge bg-@GetStatusColor(doc.Status)">@doc.Status</span></small>
                                 </div>
@@ -130,7 +130,7 @@
         {
             using var scope = ServiceScopeFactory.CreateScope();
             var repo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
-            _recentDocuments = (await repo.GetAllAsync()).OrderByDescending(d => d.CreatedAt).Take(5).ToList();
+            _recentDocuments = (await repo.GetAllAsync()).Take(5).ToList();
         }
         catch (Exception ex) { Logger.LogError(ex, "Error loading recent documents"); }
     }
@@ -172,7 +172,7 @@
                     Id = Guid.NewGuid(), FileName = file.Name, OriginalFileName = file.Name,
                     FileExtension = Path.GetExtension(file.Name).ToLowerInvariant(), ContentType = file.ContentType,
                     FileSize = file.Size, Status = DocumentStatus.Pending, Source = DocumentProcessor.Web.Models.DocumentSource.LocalUpload,
-                    UploadedAt = DateTime.UtcNow, UploadedBy = "System", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+                    UploadedBy = "System"
                 };
 
                 using var stream = file.OpenReadStream(MaxFileSize);

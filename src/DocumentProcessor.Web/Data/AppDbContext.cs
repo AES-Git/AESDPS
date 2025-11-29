@@ -24,19 +24,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(d => d.ProcessingStatus).HasMaxLength(50);
             e.Property(d => d.ProcessingErrorMessage).HasMaxLength(1000);
             e.HasIndex(d => d.Status);
-            e.HasIndex(d => d.UploadedAt);
             e.HasIndex(d => d.IsDeleted);
             e.HasQueryFilter(d => !d.IsDeleted);
         });
-    }
-
-    public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
-    {
-        foreach (var e in ChangeTracker.Entries<Document>().Where(e => e.State is EntityState.Added or EntityState.Modified))
-        {
-            if (e.State == EntityState.Added) e.Entity.CreatedAt = DateTime.UtcNow;
-            e.Entity.UpdatedAt = DateTime.UtcNow;
-        }
-        return await base.SaveChangesAsync(ct);
     }
 }

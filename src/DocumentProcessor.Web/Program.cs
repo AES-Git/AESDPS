@@ -116,7 +116,7 @@ app.MapGet("/admin/cleanup-stuck-documents", async (IServiceProvider services) =
     using var scope = services.CreateScope();
     var repo = scope.ServiceProvider.GetRequiredService<DocumentRepository>();
     var proc = scope.ServiceProvider.GetRequiredService<DocumentProcessingService>();
-    var stuck = (await repo.GetByStatusAsync(DocumentStatus.Processing)).Where(d => d.ProcessingStartedAt.HasValue && d.ProcessingStartedAt.Value < DateTime.UtcNow.AddMinutes(-30)).ToList();
+    var stuck = await repo.GetByStatusAsync(DocumentStatus.Processing);
     foreach (var doc in stuck) await proc.QueueDocumentForProcessingAsync(doc.Id);
     return Results.Ok(new { message = "Cleanup complete", count = stuck.Count });
 });

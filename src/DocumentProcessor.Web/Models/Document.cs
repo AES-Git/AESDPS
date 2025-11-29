@@ -19,15 +19,8 @@ public class Document
     public string? ProcessingStatus { get; set; }
     public int ProcessingRetryCount { get; set; }
     public string? ProcessingErrorMessage { get; set; }
-    public DateTime? ProcessingStartedAt { get; set; }
-    public DateTime? ProcessingCompletedAt { get; set; }
     public string? ExtractedText { get; set; }
     public string? Summary { get; set; }
-    public DateTime UploadedAt { get; set; }
-    public DateTime? ProcessedAt { get; set; }
     public string UploadedBy { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
     public bool IsDeleted { get; set; }
-    public DateTime? DeletedAt { get; set; }
 }
