@@ -8,24 +8,28 @@
 @inject FileStorageService Storage
 @inject DocumentProcessingService Processor
 @inject ILogger<Home> Logger
+@inject DatabaseInfoService DbInfo
 @rendermode InteractiveServer
 
 <PageTitle>Document Processor</PageTitle>
 
 <div class="container-fluid mt-4 px-4">
-    <h1 class="mb-4 text-white">Document Processor</h1>
+    <h1 class="mb-2 text-white">Document Processor</h1>
+    <div class="welcome-note mb-4">
+        <i class="bi bi-stars me-2"></i>Upload a doc and I will summarize it for you
+    </div>
     <div class="row">
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card shadow">
                 <div class="card-body">
                     <h5 class="card-title">Upload Documents</h5>
                     <div class="upload-area" @ondragenter="() => _isDragOver = true" @ondragleave="() => _isDragOver = false">
                         <div class="text-center p-4">
-                            <i class="bi bi-cloud-upload" style="font-size: 2rem;"></i>
+                            <i class="bi bi-cloud-arrow-up-fill upload-icon"></i>
                             <p class="mt-2">Drag files or click to browse</p>
                             <p class="small text-muted">Suggested: <code>C:\MAM319\DPS\docs</code></p>
                             <label for="fileInput" class="btn btn-primary btn-sm mt-2" style="cursor: pointer;">
-                                <i class="bi bi-folder-open me-1"></i>Choose Files
+                                <i class="bi bi-folder2-open me-1"></i>Choose Files
                                 <InputFile id="fileInput" OnChange="@LoadFiles" multiple accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.csv" style="display: none;" />
                             </label>
                         </div>
@@ -55,7 +59,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-9">
+        <div class="col-md-10">
             <div class="card shadow">
                 <div class="card-body">
                     <h5 class="card-title">Documents</h5>
@@ -70,12 +74,12 @@
                                     @foreach (var doc in _documents)
                                     {
                                         <tr>
-                                            <td><i class="bi @GetFileIcon(doc.FileExtension) me-2"></i>@doc.FileName</td>
+                                            <td><i class="bi @GetFileIcon(doc.FileExtension) me-2 file-icon"></i>@doc.FileName</td>
                                             <td>@GetStatusBadge(doc.Status)</td>
                                             <td class="summary-cell">@(doc.Summary ?? "-")</td>
                                             <td class="action-cell">
-                                                @if (!string.IsNullOrEmpty(doc.Summary)) { <button class="btn btn-link" @onclick="() => ShowSummary(doc)"><i class="bi bi-eye"></i></button> }
-                                                <button class="btn btn-link text-danger" @onclick="() => ShowDelete(doc)"><i class="bi bi-trash"></i></button>
+                                                @if (!string.IsNullOrEmpty(doc.Summary)) { <button class="btn btn-link" @onclick="() => ShowSummary(doc)"><i class="bi bi-eye-fill action-icon"></i></button> }
+                                                <button class="btn btn-link text-danger" @onclick="() => ShowDelete(doc)"><i class="bi bi-trash3-fill action-icon"></i></button>
                                             </td>
                                         </tr>
                                     }
@@ -85,6 +89,18 @@
                     }
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="db-info-footer">
+    <div class="container-fluid px-4">
+        <div class="d-flex justify-content-center align-items-center gap-4">
+            <span><i class="bi bi-database-fill-check me-2 footer-icon"></i><strong>@DbInfo.DatabaseType</strong></span>
+            <span class="text-muted">|</span>
+            <span><i class="bi bi-shield-lock-fill me-2 footer-icon"></i>@DbInfo.SecretName</span>
+            <span class="text-muted">|</span>
+            <span><i class="bi bi-hdd-network-fill me-2 footer-icon"></i>@DbInfo.HostAddress</span>
         </div>
     </div>
 </div>
@@ -138,6 +154,13 @@
     .table tbody td { padding: 1rem; vertical-align: middle; }
     .summary-cell { max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .action-cell { white-space: nowrap; width: 120px; }
+    .db-info-footer { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); padding: 1rem 0; box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1); font-size: 0.9rem; color: #495057; z-index: 1000; }
+    .welcome-note { background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1)); backdrop-filter: blur(10px); padding: 1rem 2rem; border-radius: 50px; color: white; font-size: 1.3rem; font-weight: 300; text-align: center; border: 1px solid rgba(255, 255, 255, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); display: inline-block; }
+    .upload-icon { font-size: 4rem; color: #0d6efd; display: block; line-height: 1; }
+    .file-icon { font-size: 2rem; vertical-align: middle; line-height: 1; }
+    .action-icon { font-size: 1.5rem; line-height: 1; }
+    .footer-icon { font-size: 1.3rem; vertical-align: middle; line-height: 1; }
+    .status-badge-icon { font-size: 1.4rem; line-height: 1; }
 </style>
 
 @code {
@@ -239,10 +262,10 @@
     };
     private RenderFragment GetStatusBadge(DocumentStatus status) => status switch
     {
-        DocumentStatus.Processed => @<span class="badge bg-success badge-sm"><i class="bi bi-check-circle"></i></span>,
-        DocumentStatus.Processing => @<span class="badge bg-warning badge-sm"><i class="bi bi-hourglass-split"></i></span>,
-        DocumentStatus.Failed => @<span class="badge bg-danger badge-sm"><i class="bi bi-exclamation-triangle"></i></span>,
-        _ => @<span class="badge bg-secondary badge-sm"><i class="bi bi-clock"></i></span>
+        DocumentStatus.Processed => @<span class="badge bg-success" style="padding: 0.5rem 0.75rem;"><i class="bi bi-check-circle-fill status-badge-icon"></i></span>,
+        DocumentStatus.Processing => @<span class="badge bg-warning" style="padding: 0.5rem 0.75rem;"><i class="bi bi-hourglass-split status-badge-icon"></i></span>,
+        DocumentStatus.Failed => @<span class="badge bg-danger" style="padding: 0.5rem 0.75rem;"><i class="bi bi-x-circle-fill status-badge-icon"></i></span>,
+        _ => @<span class="badge bg-secondary" style="padding: 0.5rem 0.75rem;"><i class="bi bi-clock-fill status-badge-icon"></i></span>
     };
     record Message { public string Text { get; set; } = ""; public string Type { get; set; } = "info"; }
 }
