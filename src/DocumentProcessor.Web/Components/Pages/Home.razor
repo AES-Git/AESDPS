@@ -9,11 +9,12 @@
 @inject DocumentProcessingService Processor
 @inject ILogger<Home> Logger
 @inject DatabaseInfoService DbInfo
+@inject NavigationManager Navigation
 @rendermode InteractiveServer
 
 <PageTitle>Document Processor</PageTitle>
 
-<div class="container-fluid mt-4 px-4">
+<div class="container-fluid mt-4 px-4 pb-5">
     <h1 class="mb-2 text-white">Document Processor</h1>
     <div class="welcome-note mb-3">
         <i class="bi bi-stars me-2"></i>Upload a doc and I will summarize it for you
@@ -40,13 +41,48 @@
         <div class="col-12">
             <div class="card shadow">
                 <div class="card-body">
+                    <h5 class="card-title">Documents</h5>
+                    @if (_isLoading) { <div class="text-center p-3"><div class="spinner-border"></div></div> }
+                    else if (!_documents.Any()) { <p class="text-muted text-center fs-5">No documents yet</p> }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead><tr><th>File</th><th>Status</th><th>Summary</th><th></th></tr></thead>
+                                <tbody>
+                                    @foreach (var doc in _documents)
+                                    {
+                                        <tr>
+                                            <td><i class="bi @GetFileIcon(doc.FileExtension) me-2 file-icon"></i>@doc.FileName</td>
+                                            <td>@GetStatusBadge(doc.Status)</td>
+                                            <td class="summary-cell">@(doc.Summary ?? "-")</td>
+                                            <td class="action-cell">
+                                                <button class="btn btn-link" @onclick="RefreshPage"><i class="bi bi-arrow-clockwise action-icon"></i></button>
+                                                @if (!string.IsNullOrEmpty(doc.Summary)) { <button class="btn btn-link" @onclick="() => ShowSummary(doc)"><i class="bi bi-eye-fill action-icon"></i></button> }
+                                                <button class="btn btn-link text-danger" @onclick="() => ShowDelete(doc)"><i class="bi bi-trash3-fill action-icon"></i></button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-body">
                     <h5 class="card-title">Upload Documents</h5>
+                    @foreach (var msg in _messages) { <div class="alert alert-@msg.Type alert-sm mt-2 py-1 mb-3"><small>@msg.Text</small></div> }
                     <div class="upload-area" @ondragenter="() => _isDragOver = true" @ondragleave="() => _isDragOver = false">
-                        <div class="text-center p-4">
-                            <i class="bi bi-cloud-arrow-up-fill upload-icon"></i>
-                            <p class="mt-2">Drag files or click to browse</p>
-                            <p class="small text-muted">Suggested: <code>C:\MAM319\DPS\docs</code></p>
-                            <label for="fileInput" class="btn btn-primary btn-sm mt-2" style="cursor: pointer;">
+                        <div class="text-center p-2">
+                            <i class="bi bi-cloud-arrow-up-fill" style="font-size: 3rem; color: #0d6efd; display: block; line-height: 1;"></i>
+                            <p class="mt-2 mb-1">Drag files or click to browse</p>
+                            <p class="small text-muted mb-1">Suggested: <code>C:\MAM319\DPS\docs</code></p>
+                            <label for="fileInput" class="btn btn-primary mt-2" style="cursor: pointer;">
                                 <i class="bi bi-folder2-open me-1"></i>Choose Files
                                 <InputFile id="fileInput" OnChange="@LoadFiles" multiple accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.csv" style="display: none;" />
                             </label>
@@ -66,45 +102,11 @@
                                 }
                             </ul>
                             <div class="mt-2">
-                                <button class="btn btn-primary btn-sm" @onclick="UploadFiles" disabled="@_isUploading">
+                                <button class="btn btn-primary" @onclick="UploadFiles" disabled="@_isUploading">
                                     @if (_isUploading) { <span class="spinner-border spinner-border-sm me-1"></span> <span>Uploading...</span> } else { <i class="bi bi-upload me-1"></i> <span>Upload</span> }
                                 </button>
-                                <button class="btn btn-secondary btn-sm ms-1" @onclick="() => _selectedFiles.Clear()" disabled="@_isUploading">Clear</button>
+                                <button class="btn btn-secondary ms-1" @onclick="() => _selectedFiles.Clear()" disabled="@_isUploading">Clear</button>
                             </div>
-                        </div>
-                    }
-                    @foreach (var msg in _messages) { <div class="alert alert-@msg.Type alert-sm mt-2 py-1"><small>@msg.Text</small></div> }
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow">
-                <div class="card-body">
-                    <h5 class="card-title">Documents</h5>
-                    @if (_isLoading) { <div class="text-center p-3"><div class="spinner-border"></div></div> }
-                    else if (!_documents.Any()) { <p class="text-muted text-center fs-5">No documents yet</p> }
-                    else
-                    {
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead><tr><th>File</th><th>Status</th><th>Summary</th><th></th></tr></thead>
-                                <tbody>
-                                    @foreach (var doc in _documents)
-                                    {
-                                        <tr>
-                                            <td><i class="bi @GetFileIcon(doc.FileExtension) me-2 file-icon"></i>@doc.FileName</td>
-                                            <td>@GetStatusBadge(doc.Status)</td>
-                                            <td class="summary-cell">@(doc.Summary ?? "-")</td>
-                                            <td class="action-cell">
-                                                @if (!string.IsNullOrEmpty(doc.Summary)) { <button class="btn btn-link" @onclick="() => ShowSummary(doc)"><i class="bi bi-eye-fill action-icon"></i></button> }
-                                                <button class="btn btn-link text-danger" @onclick="() => ShowDelete(doc)"><i class="bi bi-trash3-fill action-icon"></i></button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
                         </div>
                     }
                 </div>
@@ -202,10 +204,13 @@
     private async Task LoadDocuments()
     {
         _isLoading = true;
+        StateHasChanged();
         try { _documents = await DB.Documents.Where(d => !d.IsDeleted).Take(50).ToListAsync(); }
         catch (Exception ex) { Logger.LogError(ex, "Load failed"); _documents = []; }
-        finally { _isLoading = false; }
+        finally { _isLoading = false; StateHasChanged(); }
     }
+
+    private void RefreshPage() => Navigation.NavigateTo("/", forceLoad: true);
 
     private void LoadFiles(InputFileChangeEventArgs e)
     {
