@@ -66,31 +66,7 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-    try
-    {
-        logger.LogInformation("Ensuring database is created...");
-        var created = await db.Database.EnsureCreatedAsync();
-        if (created)
-        {
-            logger.LogInformation("Database created successfully");
-        }
-        else
-        {
-            logger.LogInformation("Database already exists");
-        }
-
-        // Test connection by checking if Documents table exists
-        var canConnect = await db.Database.CanConnectAsync();
-        logger.LogInformation("Database connection test: {CanConnect}", canConnect);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to initialize database: {Message}", ex.Message);
-        throw;
-    }
+    await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreatedAsync();
 }
 
 if (app.Environment.IsDevelopment())
